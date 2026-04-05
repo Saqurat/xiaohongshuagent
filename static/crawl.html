@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>小红书数据采集</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f5f5f7;
+      color: #1d1d1f;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #ff2442;
+    }
+    .subtitle { font-size: 14px; color: #86868b; margin-bottom: 32px; }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .card h2 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #1d1d1f;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .card h2 span { font-size: 18px; }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: #86868b;
+      margin-bottom: 6px;
+    }
+
+    textarea, input[type="number"] {
+      width: 100%;
+      border: 1.5px solid #e0e0e5;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 14px;
+      color: #1d1d1f;
+      transition: border-color .2s;
+      outline: none;
+      background: #fafafa;
+      resize: vertical;
+    }
+    textarea:focus, input[type="number"]:focus {
+      border-color: #ff2442;
+      background: #fff;
+    }
+    textarea { min-height: 90px; line-height: 1.6; }
+
+    .hint { font-size: 12px; color: #aeaeb2; margin-top: 4px; }
+
+    .metrics-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+    }
+    .metric-item label { margin-bottom: 4px; }
+    .metric-item input { text-align: center; }
+
+    .target-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .target-row input { width: 100px; text-align: center; }
+    .target-row span { font-size: 14px; color: #86868b; }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: #ff2442;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: opacity .2s;
+      margin-top: 4px;
+    }
+    .btn:hover { opacity: .88; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* status */
+    #status {
+      display: none;
+      margin-top: 20px;
+      padding: 16px 20px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    #status.running { background: #fff8e1; color: #b36a00; display: block; }
+    #status.success { background: #e8f5e9; color: #2e7d32; display: block; }
+    #status.error   { background: #fdecea; color: #c62828; display: block; }
+
+    /* results table */
+    #results { display: none; margin-top: 20px; }
+    #results h2 { font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+
+    .table-wrap { overflow-x: auto; border-radius: 12px; border: 1.5px solid #e0e0e5; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      background: #f5f5f7;
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 600;
+      white-space: nowrap;
+      border-bottom: 1.5px solid #e0e0e5;
+    }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #f0f0f0;
+      vertical-align: top;
+      max-width: 200px;
+      word-break: break-all;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafafa; }
+
+    .tag { display: inline-block; background: #fff0f3; color: #ff2442;
+           border-radius: 6px; padding: 1px 6px; font-size: 11px; margin: 1px; }
+    a { color: #ff2442; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>📕 小红书数据采集</h1>
+  <p class="subtitle">填写关键词与筛选条件，启动爬虫自动采集符合标准的笔记</p>
+
+  <form id="crawlForm">
+
+    <!-- 关键词 -->
+    <div class="card">
+      <h2><span>🔍</span> 搜索关键词</h2>
+      <label>每行一个关键词，直接用于小红书搜索</label>
+      <textarea id="keywords" placeholder="招聘主播
+带货主播招聘
+直播运营招聘" required></textarea>
+    </div>
+
+    <!-- 话题词 -->
+    <div class="card">
+      <h2><span>🏷️</span> 话题词过滤</h2>
+      <label>笔记正文/标题必须包含以下至少一个词才保留（每行一个，留空则不过滤）</label>
+      <textarea id="topicWords" placeholder="带货主播
+招聘
+直播
+运营（可留空）"></textarea>
+    </div>
+
+    <!-- 互动数 -->
+    <div class="card">
+      <h2><span>📊</span> 互动数筛选（三项均须 ≥ 设定值，填 0 表示不限）</h2>
+      <div class="metrics-row">
+        <div class="metric-item">
+          <label>💬 最少评论数</label>
+          <input type="number" id="minComments" value="5" min="0" />
+        </div>
+        <div class="metric-item">
+          <label>❤️ 最少点赞数</label>
+          <input type="number" id="minLikes" value="0" min="0" />
+        </div>
+        <div class="metric-item">
+          <label>⭐ 最少收藏数</label>
+          <input type="number" id="minFavorites" value="0" min="0" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 采集数量 -->
+    <div class="card">
+      <h2><span>🎯</span> 采集目标</h2>
+      <div class="target-row">
+        <input type="number" id="targetCount" value="20" min="1" max="200" />
+        <span>条笔记</span>
+      </div>
+      <p class="hint" style="margin-top:8px">其他筛选：仅图文、1年内发布、过滤广告内容</p>
+    </div>
+
+    <button type="submit" class="btn" id="submitBtn">🚀 开始采集</button>
+  </form>
+
+  <div id="status"></div>
+</div>
+
+<script>
+  const form = document.getElementById('crawlForm');
+  const statusEl = document.getElementById('status');
+  const submitBtn = document.getElementById('submitBtn');
+
+  function parseLines(text) {
+    return text.split('\n').map(s => s.trim()).filter(Boolean);
+  }
+
+  function setStatus(type, msg) {
+    statusEl.className = type;
+    statusEl.innerHTML = msg;
+    statusEl.style.display = 'block';
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const keywords   = parseLines(document.getElementById('keywords').value);
+    const topicWords = parseLines(document.getElementById('topicWords').value);
+    const minComments  = parseInt(document.getElementById('minComments').value)  || 0;
+    const minLikes     = parseInt(document.getElementById('minLikes').value)     || 0;
+    const minFavorites = parseInt(document.getElementById('minFavorites').value) || 0;
+    const targetCount  = parseInt(document.getElementById('targetCount').value)  || 20;
+
+    if (!keywords.length)   { alert('请填写至少一个搜索关键词'); return; }
+
+    submitBtn.disabled = true;
+    setStatus('running', '⏳ 爬虫启动中，浏览器即将自动弹出，采集过程中请勿关闭浏览器…');
+
+    try {
+      const resp = await fetch('/local-crawl/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords, topic_words: topicWords,
+          min_comments: minComments, min_likes: minLikes,
+          min_favorites: minFavorites, target_count: targetCount }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(err.detail || `HTTP ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      localStorage.setItem('xhs_crawl_result', JSON.stringify(data));
+      setStatus('success', `✅ 采集完成 ${data.count} 条，正在跳转…`);
+      setTimeout(() => { window.location.href = '/static/crawl_results.html'; }, 800);
+
+    } catch (err) {
+      setStatus('error', `❌ 采集失败：${err.message}`);
+      submitBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

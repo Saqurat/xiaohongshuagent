@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>自动化全流程 · 小红书助手</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f5f7;color:#1d1d1f;padding:40px 20px;min-height:100vh}
+    .container{max-width:680px;margin:0 auto}
+    .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}
+    h1{font-size:22px;font-weight:700;color:#ff2442}
+    .back{font-size:13px;color:#86868b;text-decoration:none}.back:hover{color:#ff2442}
+
+    .section-title{font-size:13px;font-weight:700;color:#aeaeb2;letter-spacing:.06em;text-transform:uppercase;margin:24px 0 10px}
+    .card{background:#fff;border-radius:16px;padding:22px 24px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+    .card h2{font-size:14px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:6px}
+    .card h2 span{font-size:17px}
+    label{display:block;font-size:13px;color:#86868b;margin-bottom:5px}
+    input,select,textarea{width:100%;border:1.5px solid #e0e0e5;border-radius:10px;padding:10px 12px;font-size:14px;color:#1d1d1f;outline:none;background:#fafafa;transition:border-color .2s;resize:vertical}
+    input:focus,select:focus,textarea:focus{border-color:#ff2442;background:#fff}
+    textarea{min-height:80px;line-height:1.6}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+    .hint{font-size:12px;color:#aeaeb2;margin-top:4px}
+    .divider{height:1px;background:#f0f0f0;margin:14px 0}
+
+    /* 执行按钮 */
+    .run-btn{display:block;width:100%;padding:16px;background:linear-gradient(135deg,#ff2442,#ff6b6b);color:#fff;font-size:17px;font-weight:700;border:none;border-radius:14px;cursor:pointer;transition:opacity .2s;margin-top:8px;letter-spacing:.02em}
+    .run-btn:hover{opacity:.88}
+    .run-btn:disabled{opacity:.45;cursor:not-allowed}
+
+    /* 进度面板 */
+    #progressPanel{display:none;margin-top:20px;background:#fff;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+    #progressPanel h3{font-size:14px;font-weight:600;margin-bottom:16px}
+    .step-list{display:flex;flex-direction:column;gap:10px}
+    .step-item{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-radius:10px;background:#f5f5f7;transition:background .3s}
+    .step-item.active{background:#fff8e1}
+    .step-item.done{background:#e9f9ee}
+    .step-item.error{background:#fdecea}
+    .step-icon{font-size:18px;flex-shrink:0;line-height:1.4}
+    .step-text{flex:1}
+    .step-name{font-size:13px;font-weight:600;margin-bottom:2px}
+    .step-detail{font-size:12px;color:#86868b;line-height:1.5}
+
+    .result-btn{display:block;width:100%;padding:13px;background:#ff2442;color:#fff;font-size:15px;font-weight:600;border:none;border-radius:11px;cursor:pointer;margin-top:16px;transition:opacity .2s}
+    .result-btn:hover{opacity:.85}
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <h1>⚡ 自动化全流程</h1>
+    <a class="back" href="/static/index.html">← 返回首页</a>
+  </div>
+
+  <form id="autoForm">
+
+    <!-- ── 采集参数 ── -->
+    <p class="section-title">📥 第一步：数据采集</p>
+    <div class="card">
+      <h2><span>🔍</span> 搜索关键词</h2>
+      <label>每行一个关键词，直接用于小红书搜索</label>
+      <textarea id="keywords" placeholder="招聘主播&#10;带货主播招聘&#10;直播运营招聘" required></textarea>
+    </div>
+
+    <div class="card">
+      <h2><span>🏷️</span> 话题词过滤</h2>
+      <label>笔记正文/标题必须含以下至少一个词（每行一个，留空则不过滤）</label>
+      <textarea id="topicWords" placeholder="带货主播&#10;招聘&#10;直播（可留空）"></textarea>
+    </div>
+
+    <div class="card">
+      <h2><span>📊</span> 互动数筛选 & 采集目标</h2>
+      <div class="row3">
+        <div>
+          <label>💬 最少评论数</label>
+          <input type="number" id="minComments" value="5" min="0" />
+        </div>
+        <div>
+          <label>❤️ 最少点赞数</label>
+          <input type="number" id="minLikes" value="0" min="0" />
+        </div>
+        <div>
+          <label>⭐ 最少收藏数</label>
+          <input type="number" id="minFavorites" value="0" min="0" />
+        </div>
+      </div>
+      <div class="divider"></div>
+      <label>🎯 采集目标条数</label>
+      <input type="number" id="targetCount" value="20" min="1" max="200" />
+      <p class="hint">其他筛选：仅图文、1年内发布、过滤广告</p>
+    </div>
+
+    <!-- ── 生成参数 ── -->
+    <p class="section-title">✨ 第二步：AI 生成</p>
+    <div class="card">
+      <h2><span>👤</span> 受众与风格</h2>
+      <div class="row2">
+        <div>
+          <label>目标受众</label>
+          <input id="audience" value="大学生女性" placeholder="大学生女性" />
+        </div>
+        <div>
+          <label>内容风格</label>
+          <select id="tone">
+            <option value="真实分享">真实分享</option>
+            <option value="种草推荐">种草推荐</option>
+            <option value="教程攻略">教程攻略</option>
+            <option value="测评对比">测评对比</option>
+            <option value="避雷提醒">避雷提醒</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span>📋</span> 生成数量 & 图片</h2>
+      <div class="row3">
+        <div>
+          <label>生成话题数</label>
+          <input type="number" id="topicCount" value="1" min="1" max="5" />
+          <p class="hint">建议 1~3</p>
+        </div>
+        <div>
+          <label>每话题内容条数</label>
+          <input type="number" id="contentCount" value="1" min="1" max="3" />
+        </div>
+        <div>
+          <label>每条图片张数</label>
+          <input type="number" id="imageCount" value="1" min="1" max="4" />
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 发布设置 ── -->
+    <p class="section-title">🚀 第三步：发布设置</p>
+    <div class="card">
+      <h2><span>⚙️</span> 发布参数（发布时可再修改）</h2>
+      <div class="row2">
+        <div>
+          <label>是否原创</label>
+          <select id="isOriginal">
+            <option value="true">是</option>
+            <option value="false">否</option>
+          </select>
+        </div>
+        <div>
+          <label>可见性</label>
+          <select id="visibility">
+            <option value="公开可见">公开可见</option>
+            <option value="仅自己可见">仅自己可见</option>
+            <option value="仅互关好友可见">仅互关好友可见</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 飞书同步 ── -->
+    <p class="section-title">📤 飞书同步（可选）</p>
+    <div class="card">
+      <h2><span>📋</span> 自动导入飞书</h2>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <label style="display:flex;align-items:center;gap:10px;color:#1d1d1f;font-size:14px;cursor:pointer">
+          <input type="checkbox" id="syncCrawl" style="width:18px;height:18px;accent-color:#ff2442;cursor:pointer" />
+          采集完成后，将爬取数据导入飞书（爬虫数据表）
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;color:#1d1d1f;font-size:14px;cursor:pointer">
+          <input type="checkbox" id="syncGenerate" style="width:18px;height:18px;accent-color:#ff2442;cursor:pointer" />
+          生成完成后，将所有笔记导入飞书（内容发布表）
+        </label>
+      </div>
+    </div>
+
+    <button type="submit" class="run-btn" id="runBtn">⚡ 一键执行全流程</button>
+  </form>
+
+  <!-- 进度面板 -->
+  <div id="progressPanel">
+    <h3>📡 执行进度</h3>
+    <div class="step-list">
+      <div class="step-item" id="s1">
+        <div class="step-icon">🕐</div>
+        <div class="step-text">
+          <div class="step-name">第 1 步：采集小红书数据</div>
+          <div class="step-detail" id="s1d">等待中…</div>
+        </div>
+      </div>
+      <div class="step-item" id="s2">
+        <div class="step-icon">🕐</div>
+        <div class="step-text">
+          <div class="step-name">第 2 步：AI 分析 · 生成话题与文案</div>
+          <div class="step-detail" id="s2d">等待中…</div>
+        </div>
+      </div>
+      <div class="step-item" id="s3">
+        <div class="step-icon">🕐</div>
+        <div class="step-text">
+          <div class="step-name">第 3 步：生成配图</div>
+          <div class="step-detail" id="s3d">等待中…</div>
+        </div>
+      </div>
+      <div class="step-item" id="s4">
+        <div class="step-icon">🕐</div>
+        <div class="step-text">
+          <div class="step-name">第 4 步：整理数据</div>
+          <div class="step-detail" id="s4d">等待中…</div>
+        </div>
+      </div>
+      <div class="step-item" id="s5" style="display:none">
+        <div class="step-icon">🕐</div>
+        <div class="step-text">
+          <div class="step-name">第 5 步：导入飞书</div>
+          <div class="step-detail" id="s5d">等待中…</div>
+        </div>
+      </div>
+    </div>
+    <button class="result-btn" id="resultBtn" style="display:none" onclick="window.location.href='/static/generate_results.html'">
+      🎉 查看生成结果 →
+    </button>
+  </div>
+</div>
+
+<script>
+  function parseLines(t) { return t.split('\n').map(s=>s.trim()).filter(Boolean) }
+
+  function setStep(id, state, detail) {
+    const el = document.getElementById(id);
+    el.className = 'step-item ' + state;
+    const icons = { active:'⏳', done:'✅', error:'❌', '':'🕐' };
+    el.querySelector('.step-icon').textContent = icons[state] || '🕐';
+    if (detail !== undefined) document.getElementById(id+'d').textContent = detail;
+  }
+
+  document.getElementById('autoForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('runBtn');
+    btn.disabled = true;
+
+    // 读取所有字段
+    const keywords     = parseLines(document.getElementById('keywords').value);
+    const topicWords   = parseLines(document.getElementById('topicWords').value);
+    const minComments  = parseInt(document.getElementById('minComments').value)  || 0;
+    const minLikes     = parseInt(document.getElementById('minLikes').value)     || 0;
+    const minFavorites = parseInt(document.getElementById('minFavorites').value) || 0;
+    const targetCount  = parseInt(document.getElementById('targetCount').value)  || 20;
+    const audience     = document.getElementById('audience').value.trim() || '大学生女性';
+    const tone         = document.getElementById('tone').value;
+    const topicCount   = parseInt(document.getElementById('topicCount').value)   || 1;
+    const contentCount = parseInt(document.getElementById('contentCount').value) || 1;
+    const imageCount   = parseInt(document.getElementById('imageCount').value)   || 1;
+    const isOriginal   = document.getElementById('isOriginal').value === 'true';
+    const visibility   = document.getElementById('visibility').value;
+    const syncCrawl    = document.getElementById('syncCrawl').checked;
+    const syncGenerate = document.getElementById('syncGenerate').checked;
+
+    if (!keywords.length) { alert('请填写至少一个搜索关键词'); btn.disabled=false; return; }
+
+    // 如果需要飞书同步，提前显示第 5 步
+    if (syncCrawl || syncGenerate) {
+      document.getElementById('s5').style.display = 'flex';
+    }
+
+    // 显示进度面板
+    document.getElementById('progressPanel').style.display = 'block';
+    document.getElementById('progressPanel').scrollIntoView({ behavior: 'smooth' });
+
+    try {
+      // ── Step 1: 采集 ──
+      setStep('s1', 'active', '浏览器即将弹出，请稍候…');
+      const crawlResp = await fetch('/local-crawl/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keywords, topic_words: topicWords,
+          min_comments: minComments, min_likes: minLikes,
+          min_favorites: minFavorites, target_count: targetCount,
+        }),
+      });
+      if (!crawlResp.ok) throw new Error((await crawlResp.json()).detail || `采集失败 HTTP ${crawlResp.status}`);
+      const crawlData = await crawlResp.json();
+      localStorage.setItem('xhs_crawl_result', JSON.stringify(crawlData));
+      setStep('s1', 'done', `采集完成，共 ${crawlData.count} 条笔记`);
+
+      // 采集后同步飞书（爬虫表）
+      if (syncCrawl) {
+        setStep('s5', 'active', '正在将爬取数据导入飞书爬虫数据表…');
+        try {
+          const fResp = await fetch('/feishu/sync-crawled', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: crawlData.items }),
+          });
+          const fData = await fResp.json();
+          setStep('s5', fData.success ? 'done' : 'error', `爬虫数据：${fData.message}`);
+        } catch(fe) {
+          setStep('s5', 'error', `爬虫数据导入飞书失败：${fe.message}`);
+        }
+      }
+
+      // ── Step 2: AI 生成话题 + 文案 ──
+      setStep('s2', 'active', '正在分析采集数据，生成话题与文案…');
+      const agentResp = await fetch('/agent/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audience, tone,
+          topic_count: topicCount,
+          content_count_per_topic: contentCount,
+          items: crawlData.items,
+        }),
+      });
+      if (!agentResp.ok) throw new Error((await agentResp.json()).detail || `生成失败 HTTP ${agentResp.status}`);
+      const agentResult = await agentResp.json();
+      const totalContents = agentResult.results.reduce((s, r) => s + r.contents.length, 0);
+      setStep('s2', 'done', `生成完成，共 ${agentResult.results.length} 个话题、${totalContents} 条内容`);
+
+      // ── Step 3: 生成配图 ──
+      setStep('s3', 'active', `开始生成配图，共 ${totalContents} 条…`);
+      const preparedResults = [];
+      let doneCount = 0;
+      for (const item of agentResult.results) {
+        for (const content of item.contents) {
+          doneCount++;
+          document.getElementById('s3d').textContent = `生成配图 ${doneCount} / ${totalContents}…`;
+          const prepResp = await fetch('/publish/prepare', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              topic: item.topic,
+              content,
+              image_count: imageCount,
+              is_original: isOriginal,
+              visibility,
+              mode: 'mcp',
+            }),
+          });
+          if (!prepResp.ok) throw new Error((await prepResp.json()).detail || `图片生成失败 HTTP ${prepResp.status}`);
+          preparedResults.push({
+            topic: item.topic,
+            content,
+            prepare_result: await prepResp.json(),
+          });
+        }
+      }
+      setStep('s3', 'done', `配图生成完成，共 ${preparedResults.length} 张组`);
+
+      // ── Step 4: 整理 ──
+      setStep('s4', 'active', '正在整理数据…');
+      localStorage.setItem('xhs_generate_result', JSON.stringify({
+        agent_result: agentResult,
+        prepared_results: preparedResults,
+        image_count: imageCount,
+        is_original: isOriginal,
+        visibility,
+      }));
+      setStep('s4', 'done', '数据已就绪');
+
+      // 生成后同步飞书（内容发布表）
+      if (syncGenerate) {
+        setStep('s5', 'active', `正在将 ${preparedResults.length} 条笔记导入飞书内容发布表…`);
+        let feishuOk = 0, feishuFail = 0;
+        for (const item of preparedResults) {
+          try {
+            const fResp = await fetch('/feishu/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                mcp_args: item.prepare_result.mcp_args,
+                content_type: item.content.content_type,
+              }),
+            });
+            const fData = await fResp.json();
+            fData.success ? feishuOk++ : feishuFail++;
+          } catch { feishuFail++; }
+        }
+        setStep('s5', feishuFail === 0 ? 'done' : 'error',
+          `生成内容：成功 ${feishuOk} 条，失败 ${feishuFail} 条`);
+      }
+
+      document.getElementById('resultBtn').style.display = 'block';
+
+    } catch(err) {
+      // 找到第一个 active 步骤标为 error
+      ['s1','s2','s3','s4','s5'].forEach(id => {
+        if (document.getElementById(id).classList.contains('active')) {
+          setStep(id, 'error', '❌ ' + err.message);
+        }
+      });
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

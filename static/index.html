@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>小红书内容助手</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f5f7;color:#1d1d1f;padding:40px 20px;min-height:100vh}
+    .container{max-width:640px;margin:0 auto}
+    h1{font-size:26px;font-weight:700;color:#ff2442;margin-bottom:6px}
+    .subtitle{font-size:14px;color:#86868b;margin-bottom:32px}
+
+    /* MCP 状态卡 */
+    .mcp-card{background:#fff;border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:0 1px 4px rgba(0,0,0,.07)}
+    .mcp-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+    .mcp-title{font-size:15px;font-weight:600}
+    .status-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600}
+    .status-badge.running{background:#e9f9ee;color:#1a7f3c}
+    .status-badge.stopped{background:#fdecea;color:#c62828}
+    .status-badge.checking{background:#f5f5f7;color:#86868b}
+    .dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+    .mcp-btns{display:flex;gap:10px}
+    .btn{padding:9px 20px;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .2s}
+    .btn:hover{opacity:.85}
+    .btn:disabled{opacity:.4;cursor:not-allowed}
+    .btn-green{background:#34c759;color:#fff}
+    .btn-red{background:#ff3b30;color:#fff}
+    .btn-outline{background:#fff;color:#1d1d1f;border:1.5px solid #e0e0e5}
+    .mcp-hint{font-size:12px;color:#aeaeb2;margin-top:10px}
+
+    /* 自动化入口 */
+    .auto-card{background:linear-gradient(135deg,#ff2442,#ff6b6b);border-radius:16px;padding:22px 24px;margin-bottom:24px;box-shadow:0 4px 16px rgba(255,36,66,.25);cursor:pointer;display:flex;align-items:center;gap:18px;text-decoration:none;color:#fff;transition:opacity .2s}
+    .auto-card:hover{opacity:.92}
+    .auto-icon{font-size:36px;flex-shrink:0}
+    .auto-info{flex:1}
+    .auto-title{font-size:18px;font-weight:700;margin-bottom:4px}
+    .auto-desc{font-size:13px;opacity:.85;line-height:1.5}
+    .auto-arrow{font-size:22px;opacity:.8}
+
+    /* 分隔标签 */
+    .section-label{font-size:12px;font-weight:700;color:#aeaeb2;letter-spacing:.06em;text-transform:uppercase;margin:20px 0 10px}
+
+    /* 流程步骤 */
+    .steps{display:grid;gap:12px}
+    .step{background:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.06);display:flex;align-items:center;gap:16px;text-decoration:none;color:inherit;transition:box-shadow .2s}
+    .step:hover{box-shadow:0 3px 12px rgba(0,0,0,.1)}
+    .step-num{width:38px;height:38px;border-radius:50%;background:#fff0f3;color:#ff2442;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .step-info{flex:1}
+    .step-title{font-size:15px;font-weight:600;margin-bottom:3px}
+    .step-desc{font-size:12px;color:#86868b}
+    .step-arrow{font-size:18px;color:#aeaeb2}
+
+    #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 22px;border-radius:10px;font-size:14px;display:none;z-index:999}
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>🌸 小红书内容助手</h1>
+  <p class="subtitle">采集 · 分析 · 生成 · 发布 · 全流程 AI 工作台</p>
+
+  <!-- MCP 服务控制 -->
+  <div class="mcp-card">
+    <div class="mcp-header">
+      <span class="mcp-title">⚡ 小红书 MCP 服务</span>
+      <span class="status-badge checking" id="statusBadge">
+        <span class="dot"></span>
+        <span id="statusText">检测中…</span>
+      </span>
+    </div>
+    <div class="mcp-btns">
+      <button class="btn btn-green" id="startBtn" disabled onclick="startService(false)">🚀 启动（显示浏览器）</button>
+      <button class="btn btn-outline" id="startHeadlessBtn" disabled onclick="startService(true)">启动（无界面）</button>
+      <button class="btn btn-red" id="stopBtn" disabled onclick="stopService()">■ 停止</button>
+      <button class="btn" style="background:#ff9500;color:#fff" id="loginBtn" onclick="runLogin()">🔑 登录小红书</button>
+    </div>
+    <p class="mcp-hint" id="mcpHint">正在检测服务状态…</p>
+  </div>
+
+  <!-- 自动化全流程入口 -->
+  <a class="auto-card" href="/static/auto.html">
+    <div class="auto-icon">⚡</div>
+    <div class="auto-info">
+      <div class="auto-title">自动化全流程</div>
+      <div class="auto-desc">填写一次参数，一键完成采集 → AI 生成话题文案 → 图片生成，直接跳转结果页发布</div>
+    </div>
+    <span class="auto-arrow">›</span>
+  </a>
+
+  <!-- 分步手动流程 -->
+  <p class="section-label">或按步骤手动操作</p>
+  <div class="steps">
+    <a class="step" href="/static/crawl.html">
+      <div class="step-num">1</div>
+      <div class="step-info">
+        <div class="step-title">📊 采集小红书数据</div>
+        <div class="step-desc">输入关键词，爬取笔记，精筛高质量内容</div>
+      </div>
+      <span class="step-arrow">›</span>
+    </a>
+    <a class="step" href="/static/crawl_results.html">
+      <div class="step-num">2</div>
+      <div class="step-info">
+        <div class="step-title">🔍 查看采集结果</div>
+        <div class="step-desc">浏览爬取数据，导入飞书或进入生成流程</div>
+      </div>
+      <span class="step-arrow">›</span>
+    </a>
+    <a class="step" href="/static/generate.html">
+      <div class="step-num">3</div>
+      <div class="step-info">
+        <div class="step-title">✨ AI 生成笔记</div>
+        <div class="step-desc">AI 分析数据 → 生成话题 + 文案 + 配图</div>
+      </div>
+      <span class="step-arrow">›</span>
+    </a>
+    <a class="step" href="/static/generate_results.html">
+      <div class="step-num">4</div>
+      <div class="step-info">
+        <div class="step-title">🎉 查看生成结果</div>
+        <div class="step-desc">浏览生成的笔记，导入飞书或发布到小红书</div>
+      </div>
+      <span class="step-arrow">›</span>
+    </a>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  function toast(msg, ms=2800) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', ms);
+  }
+
+  function setStatus(running, msg='') {
+    const badge = document.getElementById('statusBadge');
+    const text  = document.getElementById('statusText');
+    const hint  = document.getElementById('mcpHint');
+    const startBtn = document.getElementById('startBtn');
+    const startHBtn = document.getElementById('startHeadlessBtn');
+    const stopBtn  = document.getElementById('stopBtn');
+
+    if (running) {
+      badge.className = 'status-badge running';
+      text.textContent = '运行中';
+      hint.textContent = msg || '✅ MCP 服务正常，可以使用发布功能';
+      startBtn.disabled = true;
+      startHBtn.disabled = true;
+      stopBtn.disabled = false;
+    } else {
+      badge.className = 'status-badge stopped';
+      text.textContent = '未运行';
+      hint.textContent = msg || '⚠️ 请先启动 MCP 服务，否则无法发布到小红书';
+      startBtn.disabled = false;
+      startHBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
+  }
+
+  async function checkStatus() {
+    try {
+      const resp = await fetch('/xhs-service/status');
+      const data = await resp.json();
+      setStatus(data.running);
+    } catch(e) {
+      setStatus(false, '⚠️ 无法检测状态，请确认后端已启动');
+    }
+  }
+
+  async function startService(headless) {
+    const startBtn = document.getElementById('startBtn');
+    const startHBtn = document.getElementById('startHeadlessBtn');
+    startBtn.disabled = true;
+    startHBtn.disabled = true;
+    document.getElementById('mcpHint').textContent = '⏳ 正在启动，请稍候（约 5~10 秒）…';
+
+    try {
+      const resp = await fetch(`/xhs-service/start?headless=${headless}`, { method: 'POST' });
+      const data = await resp.json();
+      if (data.success && data.running) {
+        setStatus(true);
+        toast('✅ MCP 服务已启动');
+      } else {
+        setStatus(false, `❌ ${data.message}`);
+        toast(`❌ ${data.message}`, 4000);
+      }
+    } catch(e) {
+      setStatus(false, '❌ 请求失败：' + e.message);
+    }
+  }
+
+  async function stopService() {
+    document.getElementById('stopBtn').disabled = true;
+    try {
+      const resp = await fetch('/xhs-service/stop', { method: 'POST' });
+      const data = await resp.json();
+      setStatus(false, data.message);
+      toast('已停止 MCP 服务');
+    } catch(e) {
+      toast('❌ 请求失败：' + e.message, 4000);
+      checkStatus();
+    }
+  }
+
+  async function runLogin() {
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 启动中…';
+    try {
+      const resp = await fetch('/xhs-service/login', { method: 'POST' });
+      const data = await resp.json();
+      if (data.success) {
+        toast('✅ 登录工具已启动，请在弹出的浏览器中扫码', 4000);
+        document.getElementById('mcpHint').textContent = '请在弹出的 Chrome 窗口中扫码登录，完成后再启动 MCP 服务';
+      } else {
+        toast(`❌ ${data.message}`, 4000);
+      }
+    } catch(e) {
+      toast('❌ 请求失败：' + e.message, 4000);
+    }
+    btn.disabled = false;
+    btn.textContent = '🔑 登录小红书';
+  }
+
+  // 页面加载时检测，之后每 10 秒轮询一次
+  checkStatus();
+  setInterval(checkStatus, 10000);
+</script>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>发布到小红书 · 小红书助手</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f5f7;color:#1d1d1f;padding:40px 20px;min-height:100vh}
+    .container{max-width:640px;margin:0 auto}
+    .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}
+    h1{font-size:22px;font-weight:600;color:#ff2442}
+    .back{font-size:13px;color:#86868b;text-decoration:none}.back:hover{color:#ff2442}
+    .card{background:#fff;border-radius:16px;padding:22px 24px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+    .card h2{font-size:14px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:6px}
+    .card h2 span{font-size:17px}
+    label{display:block;font-size:13px;color:#86868b;margin-bottom:5px}
+    input[readonly],textarea[readonly]{background:#f5f5f7;color:#86868b;cursor:default}
+    input,select,textarea{width:100%;border:1.5px solid #e0e0e5;border-radius:10px;padding:10px 12px;font-size:14px;color:#1d1d1f;outline:none;background:#fafafa;transition:border-color .2s;resize:vertical}
+    input:focus:not([readonly]),select:focus,textarea:focus:not([readonly]){border-color:#ff2442;background:#fff}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .hint{font-size:12px;color:#aeaeb2;margin-top:4px}
+    .preview-box{background:#f5f5f7;border-radius:10px;padding:14px;font-size:13px;line-height:1.7;color:#1d1d1f;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto}
+    .images-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+    .images-row img{width:100px;height:100px;object-fit:cover;border-radius:8px;border:1.5px solid #e0e0e5}
+    .path-text{font-size:10px;color:#aeaeb2;margin-top:3px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .btn-row{display:flex;gap:10px;margin-top:4px}
+    .btn{flex:1;padding:13px;border:none;border-radius:11px;font-size:15px;font-weight:600;cursor:pointer;transition:opacity .2s}
+    .btn:hover{opacity:.85}
+    .btn-primary{background:#ff2442;color:#fff}
+    .btn-outline{background:#fff;color:#1d1d1f;border:1.5px solid #e0e0e5}
+    .badge{display:inline-block;background:#fff0f3;color:#ff2442;border-radius:6px;padding:2px 8px;font-size:12px;margin:2px}
+    .divider{height:1px;background:#f0f0f0;margin:12px 0}
+    .empty{text-align:center;padding:60px 20px;color:#86868b;font-size:15px}
+    #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 22px;border-radius:10px;font-size:14px;display:none;z-index:999}
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <h1>🚀 发布到小红书</h1>
+    <a class="back" href="/static/generate_results.html">← 返回生成结果</a>
+  </div>
+
+  <div id="main"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+  function toast(msg,ms=2800){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',ms)}
+
+  const raw = localStorage.getItem('xhs_publish_item');
+  const main = document.getElementById('main');
+
+  if (!raw) {
+    main.innerHTML = '<div class="empty">未找到笔记数据，请返回生成结果页选择一条笔记。</div>';
+  } else {
+    const { prepare_result } = JSON.parse(raw);
+    const mcp    = prepare_result.mcp_args;
+    const images = prepare_result.image_paths || [];
+
+    main.innerHTML = `
+      <!-- 内容预览（只读） -->
+      <div class="card">
+        <h2><span>📋</span> 内容预览（只读）</h2>
+        <label>标题（title）</label>
+        <input readonly value="${esc(mcp.title)}" />
+        <div class="divider"></div>
+        <label>正文 + CTA（content）</label>
+        <div class="preview-box">${esc(mcp.content)}</div>
+        <div class="divider"></div>
+        <label>标签（tags）</label>
+        <div>${(mcp.tags||[]).map(t=>`<span class="badge">#${esc(t)}</span>`).join('')}</div>
+      </div>
+
+      <!-- 图片（只读） -->
+      <div class="card">
+        <h2><span>🖼️</span> 图片（images）</h2>
+        <div class="images-row">
+          ${images.map(p=>{
+            const f=p.split(/[/\\]/).pop();
+            return `<div>
+              <img src="/images/${esc(f)}" onerror="this.style.display='none'" />
+              <div class="path-text" title="${esc(p)}">${esc(f)}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <p class="hint" style="margin-top:8px">图片已在生成阶段保存到本地，路径已写入发布参数</p>
+      </div>
+
+      <!-- 发布参数（可编辑） -->
+      <div class="card">
+        <h2><span>⚙️</span> 发布参数</h2>
+        <div class="row2">
+          <div>
+            <label>是否原创（is_original）</label>
+            <select id="isOriginal">
+              <option value="true"  ${mcp.is_original  ? 'selected':''}>是</option>
+              <option value="false" ${!mcp.is_original ? 'selected':''}>否</option>
+            </select>
+          </div>
+          <div>
+            <label>可见性（visibility）</label>
+            <select id="visibility">
+              <option value="公开可见"       ${mcp.visibility==='公开可见'      ?'selected':''}>公开可见</option>
+              <option value="仅自己可见"     ${mcp.visibility==='仅自己可见'    ?'selected':''}>仅自己可见</option>
+              <option value="仅互关好友可见" ${mcp.visibility==='仅互关好友可见'?'selected':''}>仅互关好友可见</option>
+            </select>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <label>定时发布（schedule_at，可选）</label>
+        <input type="datetime-local" id="scheduleAt" />
+        <p class="hint">留空 = 立即发布；有效范围：1小时 ~ 14天后</p>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="window.location.href='/static/generate_results.html'">← 返回</button>
+        <button class="btn btn-primary" id="publishBtn">确认发布</button>
+      </div>
+    `;
+
+    document.getElementById('publishBtn').addEventListener('click', async function() {
+      this.disabled = true;
+      this.textContent = '⏳ 发布中…';
+      const isOriginal = document.getElementById('isOriginal').value === 'true';
+      const visibility = document.getElementById('visibility').value;
+      const scheduleAt = document.getElementById('scheduleAt').value || null;
+
+      // 构造 XHSMCPToolArgs（对齐 MCP 参数）
+      const payload = {
+        payload: {
+          Title:      mcp.title,
+          Content:    mcp.content,
+          ImagePaths: images,
+          Tags:       mcp.tags || [],
+          IsOriginal: isOriginal,
+          Visibility: visibility,
+        },
+        mode: 'mcp',
+      };
+
+      try {
+        const resp = await fetch('/publish/send', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(payload),
+        });
+        const result = await resp.json();
+        if (result.success) {
+          toast('✅ 发布成功！', 3000);
+          this.textContent = '✅ 已发布';
+        } else {
+          toast(`❌ ${result.message}`, 4000);
+          this.disabled = false;
+          this.textContent = '确认发布';
+        }
+      } catch(e) {
+        toast('❌ 请求失败：' + e.message, 4000);
+        this.disabled = false;
+        this.textContent = '确认发布';
+      }
+    });
+  }
+</script>
+</body>
+</html>

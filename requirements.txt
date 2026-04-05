@@ -1,0 +1,29 @@
+# Core
+fastapi>=0.135.0
+uvicorn>=0.43.0
+pydantic>=2.12.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.22
+
+# LLM / LangChain
+langchain>=1.2.0
+langchain-core>=1.2.0
+langchain-openai>=1.1.0
+openai>=2.0.0
+
+# HTTP
+httpx>=0.28.0
+requests>=2.33.0
+
+# Crawling
+playwright>=1.58.0
+beautifulsoup4>=4.14.0
+lxml>=5.0.0
+
+# Chinese NLP
+jieba>=0.42.0
+
+# Utilities
+tiktoken>=0.12.0
+tenacity>=9.0.0

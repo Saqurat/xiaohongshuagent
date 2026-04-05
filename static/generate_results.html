@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>生成结果 · 小红书助手</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f5f7;color:#1d1d1f;padding:32px 20px;min-height:100vh}
+    .container{max-width:800px;margin:0 auto}
+    .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+    h1{font-size:22px;font-weight:600;color:#ff2442}
+    .back{font-size:13px;color:#86868b;text-decoration:none}.back:hover{color:#ff2442}
+    .stat{background:#fff;border-radius:12px;padding:12px 18px;margin-bottom:20px;font-size:14px;color:#86868b;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+    .stat strong{color:#1d1d1f}
+    /* note card */
+    .note-card{background:#fff;border-radius:16px;margin-bottom:24px;box-shadow:0 1px 5px rgba(0,0,0,.07);overflow:hidden}
+    .note-header{background:#fff0f3;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .note-index{font-size:12px;font-weight:600;color:#ff2442;background:#ffe0e6;border-radius:6px;padding:2px 8px}
+    .note-topic{font-size:15px;font-weight:600;color:#1d1d1f;flex:1}
+    .note-body{padding:18px 20px}
+    .field-label{font-size:12px;color:#aeaeb2;margin-bottom:4px}
+    .field-val{font-size:14px;color:#1d1d1f;line-height:1.6;margin-bottom:12px;word-break:break-all}
+    .field-val.title{font-size:16px;font-weight:600;margin-bottom:8px}
+    .field-val.body{white-space:pre-wrap;background:#fafafa;border-radius:8px;padding:10px 12px}
+    .tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+    .tag{background:#fff0f3;color:#ff2442;border-radius:6px;padding:3px 8px;font-size:12px}
+    .divider{height:1px;background:#f0f0f0;margin:12px 0}
+    .images-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+    .images-row img{width:120px;height:120px;object-fit:cover;border-radius:8px;border:1.5px solid #e0e0e5}
+    .path-text{font-size:10px;color:#aeaeb2;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:3px}
+    .note-actions{display:flex;gap:8px;padding:0 20px 18px;flex-wrap:wrap}
+    .btn{padding:9px 18px;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .2s}
+    .btn:hover{opacity:.85}.btn:disabled{opacity:.45;cursor:not-allowed}
+    .btn-green{background:#34c759;color:#fff}
+    .btn-primary{background:#ff2442;color:#fff}
+    .empty{text-align:center;padding:60px 20px;color:#86868b;font-size:15px}
+    #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 22px;border-radius:10px;font-size:14px;display:none;z-index:999}
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <h1>🎉 生成结果</h1>
+    <a class="back" href="/static/generate.html">← 重新生成</a>
+  </div>
+
+  <div class="stat" id="statBar"></div>
+  <div id="cards"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+  function toast(msg,ms=2800){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',ms)}
+
+  const raw = localStorage.getItem('xhs_generate_result');
+  const cardsEl = document.getElementById('cards');
+
+  if (!raw) {
+    cardsEl.innerHTML = '<div class="empty">未找到生成数据，请先返回生成页操作。</div>';
+  } else {
+    const { agent_result, prepared_results } = JSON.parse(raw);
+    const total = prepared_results.length;
+    document.getElementById('statBar').innerHTML =
+      `共生成 <strong>${total}</strong> 条笔记`;
+
+    prepared_results.forEach((item, idx) => {
+      const { topic, content, prepare_result } = item;
+      const mcp    = prepare_result.mcp_args;
+      const images = prepare_result.image_paths || [];
+
+      const card = document.createElement('div');
+      card.className = 'note-card';
+      card.innerHTML = `
+        <div class="note-header">
+          <span class="note-index">#${idx + 1}</span>
+          <span class="note-topic">${esc(topic.title)}</span>
+        </div>
+        <div class="note-body">
+          <div class="field-label">标题（title）</div>
+          <div class="field-val title">${esc(mcp.title)}</div>
+
+          <div class="field-label">正文 + CTA（content）</div>
+          <div class="field-val body">${esc(mcp.content)}</div>
+
+          <div class="field-label">标签（tags）</div>
+          <div class="tags">${(mcp.tags||[]).map(t=>`<span class="tag">#${esc(t)}</span>`).join('')}</div>
+
+          <div class="divider"></div>
+          <div class="field-label">图片（images）</div>
+          <div class="images-row">
+            ${images.map(p=>{
+              const f = p.split(/[/\\]/).pop();
+              return `<div>
+                <img src="/images/${esc(f)}" onerror="this.style.display='none'" />
+                <div class="path-text" title="${esc(p)}">${esc(f)}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+        <div class="note-actions">
+          <button class="btn btn-green" data-idx="${idx}">📤 导入飞书</button>
+          <button class="btn btn-primary" data-idx="${idx}">🚀 发布到小红书 →</button>
+        </div>
+      `;
+      cardsEl.appendChild(card);
+    });
+
+    // 飞书同步
+    cardsEl.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const idx = parseInt(btn.dataset.idx);
+      const item = prepared_results[idx];
+
+      if (btn.classList.contains('btn-green')) {
+        btn.disabled = true;
+        btn.textContent = '⏳ 同步中…';
+        try {
+          const resp = await fetch('/feishu/sync', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+              mcp_args: item.prepare_result.mcp_args,
+              content_type: item.content.content_type,
+            }),
+          });
+          const result = await resp.json();
+          toast(result.success ? `✅ ${result.message}` : `❌ ${result.message}`, 3500);
+        } catch(err) {
+          toast('❌ 请求失败：' + err.message, 3500);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '📤 导入飞书';
+        }
+      }
+
+      if (btn.classList.contains('btn-primary')) {
+        // 把选中的这条存到 localStorage，publish.html 读取
+        localStorage.setItem('xhs_publish_item', JSON.stringify(item));
+        window.location.href = '/static/publish.html';
+      }
+    });
+  }
+</script>
+</body>
+</html>
