@@ -73,6 +73,20 @@ class XHSCrawler:
     # Public entry point
     # ------------------------------------------------------------------
 
+    async def _make_context(self, browser, storage_state: str | None = None):
+        """创建浏览器 context，统一 viewport 和 UA。"""
+        ctx_kwargs = {
+            "viewport": {"width": 1440, "height": 900},
+            "user_agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+        }
+        if storage_state:
+            ctx_kwargs["storage_state"] = storage_state
+        return await browser.new_context(**ctx_kwargs)
+
     async def crawl(self) -> SearchCrawlResponse:
         keywords = self.request.keywords
         state_path = Path(STATE_FILE)
@@ -83,21 +97,15 @@ class XHSCrawler:
                 args=["--disable-blink-features=AutomationControlled"],
             )
 
-            ctx_kwargs = {
-                "viewport": {"width": 1440, "height": 900},
-                "user_agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-            }
-            if state_path.exists():
-                ctx_kwargs["storage_state"] = str(state_path)
-                print(f"[XHSCrawler] 已加载持久化登录态：{STATE_FILE}")
-
-            context = await browser.new_context(**ctx_kwargs)
+            # 首次创建 context（带 storage_state）
+            context = await self._make_context(
+                browser,
+                storage_state=str(state_path) if state_path.exists() else None,
+            )
             page = await context.new_page()
-            await self._ensure_logged_in(page, context)
+
+            # 检查并确保已登录（过期时自动重新登录，返回有效 page/context）
+            page, context = await self._ensure_logged_in(browser)
 
             try:
                 for keyword in keywords:
@@ -354,22 +362,96 @@ class XHSCrawler:
                 # 滚动后等待新内容加载
                 await page.wait_for_timeout(800)
 
-    async def _ensure_logged_in(self, page: Page, context: BrowserContext) -> None:
-        await page.goto(XHS_BASE, wait_until="domcontentloaded", timeout=30000)
-        await asyncio.sleep(2)
+    async def _verify_login(self, page: Page) -> bool:
+        """
+        验证当前页面是否处于登录状态。
+        通过检测页面是否包含用户专属元素（头像、用户名、我的页面链接）
+        或是否被重定向到了登录页来判断。
+        """
+        try:
+            current_url = page.url
+            # 如果 URL 包含登录相关的重定向，说明未登录或已过期
+            if "login" in current_url.lower() or "passport" in current_url.lower():
+                return False
 
-        # 已有持久化 state，直接跳过登录
+            # 等待页面稳定
+            await page.wait_for_load_state("domcontentloaded", timeout=5000)
+            await asyncio.sleep(1)
+
+            # 登录成功时，顶部导航栏会有"登录"按钮（未登录状态），
+            # 登录后该按钮消失，取而代之的是用户头像或用户名
+            try:
+                login_btn = page.locator(".login-button")
+                if await login_btn.count() > 0:
+                    return False
+            except Exception:
+                pass
+
+            # 检查登录用户元素（头像、我的页面入口等）
+            logged_in_selectors = [
+                ".avatar",
+                "a[href*='/user/profile']",
+                ".header-user",
+                "[class*='user-info']",
+            ]
+            for selector in logged_in_selectors:
+                try:
+                    if await page.locator(selector).count() > 0:
+                        return True
+                except Exception:
+                    pass
+
+            return False
+        except Exception:
+            return False
+
+    async def _ensure_logged_in(self, browser) -> tuple[Page, BrowserContext]:
+        """
+        确保已登录，返回 (page, context)。
+
+        流程：
+        1. 有 state 文件 → 加载，验证是否有效
+        2. 有效 → 直接用
+        3. 过期/无效 → 删除旧文件，重新引导登录，保存新 state
+        """
+        Path(STATE_FILE).parent.mkdir(parents=True, exist_ok=True)
+
         if Path(STATE_FILE).exists():
-            print("[XHSCrawler] 持久化登录态已生效，跳过登录 OK")
-            return
+            # 加载已有 state，验证是否仍然有效
+            print("[XHSCrawler] 已加载持久化登录态，验证有效性…")
+            context = await self._make_context(browser, storage_state=str(STATE_FILE))
+            page = await context.new_page()
+            await page.goto(XHS_BASE, wait_until="domcontentloaded", timeout=30000)
+            await asyncio.sleep(2)
 
-        # 首次登录：等用户手动登录后按 Enter，然后保存 state
+            if await self._verify_login(page):
+                print("[XHSCrawler] 登录态有效，跳过登录 OK")
+                return page, context
+
+            # state 过期：关闭当前 context，重建
+            print("[XHSCrawler] 登录态已过期或无效，需要重新登录")
+            await context.close()
+            Path(STATE_FILE).unlink(missing_ok=True)
+
+        # 重新登录：创建空白 context，引导用户登录，保存 state
+        context = await self._make_context(browser)
+        page = await context.new_page()
+        await page.goto(XHS_BASE, wait_until="domcontentloaded", timeout=30000)
+        await asyncio.sleep(1)
+
         print("[XHSCrawler] 请在弹出的浏览器窗口中完成小红书登录，登录完成后回到此终端按 Enter 继续…")
         await asyncio.get_event_loop().run_in_executor(None, input)
 
-        Path(STATE_FILE).parent.mkdir(parents=True, exist_ok=True)
+        # 验证登录成功后保存 state
+        await page.goto(XHS_BASE, wait_until="domcontentloaded", timeout=30000)
+        await asyncio.sleep(2)
+        if not await self._verify_login(page):
+            await context.close()
+            raise RuntimeError("登录验证失败，请重新运行程序")
+
         await context.storage_state(path=STATE_FILE)
-        print(f"[XHSCrawler] 登录态已保存至 {STATE_FILE}，下次启动自动跳过登录 OK")
+        print(f"[XHSCrawler] 登录态已保存至 {STATE_FILE}，后续启动自动跳过登录 OK")
+        return page, context
 
     async def _dismiss_popups(self, page: Page) -> None:
         for selector in self.POPUP_CLOSE_SELECTORS:
@@ -495,3 +577,59 @@ class XHSCrawler:
 async def crawl_local_site_notes(request: SearchCrawlRequest) -> SearchCrawlResponse:
     crawler = XHSCrawler(request)
     return await crawler.crawl()
+
+
+async def check_crawler_login_status() -> dict:
+    """
+    主动检查爬虫登录状态，不依赖完整采集流程。
+
+    返回：
+        {
+            "has_state_file": bool,       # 是否存在持久化文件
+            "is_logged_in": bool,        # 当前登录态是否有效
+            "message": str                # 状态描述
+        }
+    """
+    state_path = Path(STATE_FILE)
+    result = {
+        "has_state_file": state_path.exists(),
+        "is_logged_in": False,
+        "message": "",
+    }
+
+    if not result["has_state_file"]:
+        result["message"] = "无持久化登录文件，需要手动登录"
+        return result
+
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            context = await browser.new_context(
+                storage_state=str(state_path),
+                viewport={"width": 1440, "height": 900},
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+            )
+            page = await context.new_page()
+            await page.goto(XHS_BASE, wait_until="domcontentloaded", timeout=30000)
+            await asyncio.sleep(2)
+
+            # 复用 crawler 的验证逻辑
+            crawler = XHSCrawler.__new__(XHSCrawler)
+            is_logged_in = await crawler._verify_login(page)
+
+            result["is_logged_in"] = is_logged_in
+            result["message"] = (
+                "登录有效" if is_logged_in else "登录已过期，需要重新登录"
+            )
+            await browser.close()
+    except Exception as e:
+        result["message"] = f"检查失败: {e}"
+
+    return result
