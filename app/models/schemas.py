@@ -232,3 +232,31 @@ class FeishuSyncResponse(BaseModel):
 
 class FeishuCrawledSyncRequest(BaseModel):
     items: List[NoteItem]
+
+
+class CommentReplyRecord(BaseModel):
+    note_title: str = Field("", description="笔记标题")
+    note_url: str = Field("", description="笔记链接")
+    comment_id: str = Field("", description="评论 ID")
+    comment_user: str = Field("", description="评论人昵称")
+    comment_content: str = Field("", description="评论内容")
+    comment_time: str = Field("", description="评论时间")
+    reply_content: str = Field("", description="AI 生成的回复内容")
+    reply_time: str = Field("", description="回复提交时间")
+    status: str = Field("已回复", description="状态：已回复/无需回复/回复失败")
+
+
+class CommentAutoReplyRequest(BaseModel):
+    note_ids: Optional[List[str]] = Field(None, description="指定笔记 ID 列表，None 表示处理最近笔记")
+    max_notes: int = Field(3, description="每次最多处理笔记数")
+    audience: str = Field("大学生女性", description="账号人设，用于 LLM 生成")
+
+
+class CommentAutoReplyResponse(BaseModel):
+    success: bool
+    processed_notes: int = 0
+    replied: int = 0
+    skipped: int = 0
+    failed: int = 0
+    message: str = ""
+    records: List[CommentReplyRecord] = []

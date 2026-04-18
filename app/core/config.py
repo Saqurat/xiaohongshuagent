@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # MCP 二进制路径（用于后端自动启动）
     xhs_mcp_binary: str = ""
 
+    # 自动回复配置
+    feishu_reply_table_id: str = ""      # 回复记录表 ID
+    comment_max_notes: int = 3           # 每次最多处理笔记数
+    comment_check_interval: int = 2      # 定时任务间隔（小时）
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

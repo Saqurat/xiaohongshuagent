@@ -16,6 +16,7 @@ from app.api.routes_agent import router as agent_router
 from app.api.routes_local_site_crawler import router as local_crawl_router
 from app.api.routes_publish import router as publish_router
 from app.api.routes_feishu import router as feishu_router
+from app.api.routes_comment import router as comment_router
 from app.api.routes_xhs_service import router as xhs_service_router
 
 app = FastAPI(
@@ -33,6 +34,7 @@ app.include_router(agent_router)
 app.include_router(local_crawl_router)
 app.include_router(publish_router)
 app.include_router(feishu_router)
+app.include_router(comment_router)
 app.include_router(xhs_service_router)
 
 Path("data/output/images").mkdir(parents=True, exist_ok=True)
