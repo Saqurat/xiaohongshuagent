@@ -633,3 +633,57 @@ async def check_crawler_login_status() -> dict:
         result["message"] = f"检查失败: {e}"
 
     return result
+
+
+async def keepalive_xhs_session() -> dict:
+    """
+    启动时调用，携带持久化 cookies 访问小红书，刷新 session 有效期。
+    静默执行——有效则续期，无效则打印警告（不阻塞启动）。
+
+    返回：
+        {"success": bool, "message": str}
+    """
+    state_path = Path(STATE_FILE)
+    if not state_path.exists():
+        return {"success": False, "message": "无登录文件，跳过续期"}
+
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            context = await browser.new_context(
+                storage_state=str(state_path),
+                viewport={"width": 1440, "height": 900},
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+            )
+            page = await context.new_page()
+
+            # 携带 cookies 访问 XHS，触发服务端刷新 session 有效期
+            try:
+                resp = await page.goto(XHS_BASE, wait_until="commit", timeout=15000)
+                if resp and resp.ok:
+                    await browser.close()
+                    return {"success": True, "message": "Session 已续期"}
+            except Exception:
+                pass
+
+            # fallback：等待页面加载完成后验证
+            await page.goto(XHS_BASE, wait_until="domcontentloaded", timeout=20000)
+            await asyncio.sleep(1)
+
+            crawler = XHSCrawler.__new__(XHSCrawler)
+            is_logged_in = await crawler._verify_login(page)
+            await browser.close()
+
+            if is_logged_in:
+                return {"success": True, "message": "Session 已续期"}
+            return {"success": False, "message": "登录已过期，下次运行时会引导重新登录"}
+
+    except Exception as e:
+        return {"success": False, "message": f"续期异常: {e}"}
