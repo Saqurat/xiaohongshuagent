@@ -1,6 +1,6 @@
 # XHS Content Agent — 小红书 AI 内容助手
 
-基于 FastAPI + LangChain 构建的小红书内容挖掘与自动生成系统。支持从爬取竞品数据、分析爆款规律、AI 生成文案与配图，到一键发布的完整闭环。
+基于 FastAPI + LangChain 构建的小红书内容挖掘与自动生成系统。支持从爬取竞品数据，分析爆款规律，AI 生成文案与配图，到一键发布的完整闭环。
 
 ---
 
@@ -8,14 +8,15 @@
 
 | 模块 | 说明 |
 |------|------|
-| 数据采集 | 通过 Playwright 爬取小红书搜索结果，支持按关键词过滤，自动跳过视频与广告 |
-| 数据分析 | 提取高频关键词、热门标签、标题规律与用户洞察，输出结构化分析报告 |
-| 话题生成 | 基于分析结果，调用 LLM 生成高质量选题建议（含标题与理由） |
-| 内容生成 | 针对每个选题生成完整文案：正文、标题、话题标签、互动引导语、内容类型 |
-| 图片生成 | 调用阿里百炼 `qwen-image-2.0-pro` 生成符合小红书风格的配图 |
+| 数据采集 | 通过 Playwright 爬取小红书搜索结果，自动跳过视频与广告 |
+| 数据分析 | 提取高频关键词、热门标签、标题规律与用户洞察 |
+| 话题生成 | 基于分析结果，LLM 生成高质量选题建议 |
+| 内容生成 | 生成完整文案：正文、标题、标签、互动引导语、配图建议 |
+| 图片生成 | 调用阿里百炼 `qwen-image-2.0-pro` 生成小红书风格配图 |
 | 内容发布 | 支持 MCP 协议或 REST API 两种模式发布至小红书 |
-| 飞书同步 | 将爬取数据与 AI 生成内容同步至飞书多维表格，便于团队协作与审核 |
-| MCP Server | 将主流水线封装为 MCP 工具，可在 Claude Desktop / Cursor 等 AI 工具中直接调用 |
+| 评论自动回复 | AI 判断评论是否需要回复，生成自然回复内容并自动提交 |
+| 飞书同步 | 将爬取数据与 AI 生成内容同步至飞书多维表格 |
+| MCP Server | 封装为 MCP 工具，可在 Claude Desktop / Cursor 等 AI 工具中直接调用 |
 | Web UI | 内置静态前端，提供爬取、生成、发布的图形化操作界面 |
 
 ---
@@ -41,11 +42,12 @@ xhs_content_agent/
 │   ├── api/               # FastAPI 路由层
 │   │   ├── routes_agent.py            # 主流水线
 │   │   ├── routes_analysis.py          # 数据分析
+│   │   ├── routes_comment.py          # 评论自动回复
 │   │   ├── routes_content.py           # 文案生成
-│   │   ├── routes_feishu.py            # 飞书同步
+│   │   ├── routes_feishu.py           # 飞书同步
 │   │   ├── routes_local_site_crawler.py # 爬虫
 │   │   ├── routes_publish.py           # 发布
-│   │   ├── routes_topics.py            # 话题生成
+│   │   ├── routes_topics.py           # 话题生成
 │   │   └── routes_xhs_service.py       # 小红书服务
 │   ├── core/
 │   │   └── config.py      # 配置管理（从 .env 读取）
@@ -56,19 +58,21 @@ xhs_content_agent/
 │   │   └── topic_generation_prompt.txt
 │   └── services/
 │       ├── agent_service.py            # 主流水线编排
-│       ├── analysis_service.py          # 笔记数据分析
-│       ├── topic_service.py            # 话题生成
-│       ├── content_service.py          # 文案生成
-│       ├── image_service.py            # 图片生成（阿里百炼）
-│       ├── publish_service.py          # 小红书发布
-│       ├── feishu_service.py           # 飞书同步
+│       ├── analysis_service.py         # 笔记数据分析
+│       ├── topic_service.py           # 话题生成
+│       ├── content_service.py         # 文案生成
+│       ├── image_service.py           # 图片生成（阿里百炼）
+│       ├── publish_service.py         # 小红书发布
+│       ├── comment_service.py         # 评论自动回复
+│       ├── feishu_service.py          # 飞书同步
 │       ├── local_site_crawler_service.py # 小红书爬虫（Playwright）
-│       └── mcp_client_service.py       # MCP 客户端
+│       └── mcp_client_service.py      # MCP 客户端
 ├── static/                # Web 前端页面（静态文件）
 ├── data/
 │   ├── raw/               # 爬取数据 / Cookies / 状态文件
 │   └── output/images/     # 生成的图片输出目录
-├── xiaohongshumcp/        # 小红书 MCP 可执行文件
+├── tests/                 # 单元测试
+├── xiaohongshumcp/       # 小红书 MCP 可执行文件
 ├── mcp_server.py          # MCP Server 入口
 ├── run.py                 # 服务启动入口
 └── .env                   # 环境变量配置（勿提交）
@@ -86,7 +90,6 @@ python -m venv .venv
 
 # 激活虚拟环境
 .venv\Scripts\activate        # Windows PowerShell
-# 或
 .\.venv\Scripts\Activate.ps1 # Windows PowerShell（受限执行策略时）
 
 # 安装依赖
@@ -95,8 +98,6 @@ pip install -r requirements.txt
 # 安装 Playwright 浏览器
 playwright install chromium
 ```
-
-> 注意：`.venv` 已包含在 `.gitignore` 中，无需提交。首次运行 `playwright install chromium` 可能需要几分钟下载 Chromium。
 
 ### 2. 配置环境变量
 
@@ -126,6 +127,10 @@ FEISHU_PUBLISH_TABLE_ID=  # AI 生成笔记表
 XHS_MCP_URL=http://localhost:18060
 XHS_MCP_ENDPOINT=http://localhost:18060/mcp
 XHS_MCP_BINARY=path\to\xiaohongshu-mcp-windows-amd64.exe
+
+# ========== 自动回复配置（可选）==========
+FEISHU_REPLY_TABLE_ID=   # 回复记录表
+COMMENT_MAX_NOTES=3       # 每次最多处理笔记数
 ```
 
 ### 3. 启动服务
@@ -133,6 +138,8 @@ XHS_MCP_BINARY=path\to\xiaohongshu-mcp-windows-amd64.exe
 ```bash
 python run.py
 ```
+
+启动时自动携带 cookies 访问小红书，刷新 session 有效期，防止登录过期。
 
 浏览器访问 `http://127.0.0.1:8000` 进入 Web UI。
 FastAPI 交互文档（Swagger）：`http://127.0.0.1:8000/docs`
@@ -144,16 +151,48 @@ FastAPI 交互文档（Swagger）：`http://127.0.0.1:8000/docs`
 | 路由 | 说明 |
 |------|------|
 | `POST /local-crawl/search` | 按关键词爬取小红书图文笔记 |
+| `POST /local-crawl/login-status` | 查询爬虫登录状态 |
 | `POST /analysis/analyze` | 分析笔记列表，提取关键词、标签、标题规律、洞察点 |
 | `POST /topics/generate` | 根据分析结果生成话题建议 |
 | `POST /content/generate` | 根据选题生成图文文案 |
 | `POST /image/generate` | 根据文案生成配图 |
 | `POST /publish/prepare` | 组装发布 Payload（REST / MCP 格式） |
 | `POST /publish/send` | 发布至小红书 |
+| `POST /comment/auto-reply` | 触发评论自动回复（AI 判断 + 生成 + 提交） |
+| `GET  /comment/reply-records` | 查询已回复评论记录 |
 | `POST /feishu/sync` | 将生成内容同步至飞书 |
 | `POST /feishu/sync-crawled` | 将爬取数据同步至飞书 |
 | `POST /agent/run` | 一键运行完整内容生成流水线（采集 → 分析 → 话题 → 文案 → 图片） |
 | `GET  /health` | 健康检查 |
+
+---
+
+## 评论自动回复
+
+### 功能说明
+
+通过 MCP 获取自己笔记下的评论列表，由 LLM 判断每条评论是否需要回复并生成回复内容，自动提交回复。防重机制确保同一条评论不会被重复回复。
+
+### 使用方式
+
+```bash
+# 自动回复最近 3 篇笔记的评论
+POST /comment/auto-reply
+Body: {"max_notes": 3, "audience": "大学生女性"}
+
+# 指定笔记 ID
+POST /comment/auto-reply
+Body: {"note_ids": ["笔记ID1", "笔记ID2"], "audience": "大学生女性"}
+```
+
+### 定时任务配置（外部 cron）
+
+```bash
+# 每 2 小时触发一次（建议搭配随机抖动）
+curl -X POST http://127.0.0.1:8000/comment/auto-reply \
+  -H "Content-Type: application/json" \
+  -d '{"max_notes": 3}'
+```
 
 ---
 
@@ -184,7 +223,7 @@ python mcp_server.py
 
 ### 登录态
 
-首次运行爬虫时，程序会打开浏览器窗口引导登录小红书。登录完成后状态自动保存至 `data/raw/xhs_state.json`，下次启动自动复用，无需重复登录。
+首次运行爬虫时，程序会打开浏览器窗口引导登录小红书。登录完成后状态自动保存至 `data/raw/xhs_state.json`，下次启动时自动验证有效性，过期则重新引导登录。
 
 ### 采集数量为 0 或不足的排查
 
@@ -199,8 +238,8 @@ python mcp_server.py
 
 同步支持两种数据源：
 
-- **AI 生成内容**：通过 `/feishu/sync` 接口同步，由 `sync_to_feishu()` 处理
-- **爬取数据**：通过 `/feishu/sync-crawled` 接口同步，由 `sync_crawled_notes_to_feishu()` 处理
+- **AI 生成内容**：通过 `/feishu/sync` 接口同步
+- **爬取数据**：通过 `/feishu/sync-crawled` 接口同步
 
 字段映射自动从飞书多维表格 API 获取，支持：
 - **日期字段**（type=5）：自动转换为 Unix 时间戳
@@ -209,12 +248,29 @@ python mcp_server.py
 
 ---
 
-## 注意事项
+## 账号安全注意事项
 
-- 爬取功能需要提前完成小红书登录（首次自动引导）
-- 发布功能依赖本地运行的小红书 MCP 服务，需完成扫码登录
-- 飞书同步为可选功能，未配置时相关接口返回提示信息而不会报错
-- `.env` 文件包含敏感凭据，勿提交至版本控制系统
+使用第三方自动化工具存在被平台检测的风险，以下措施可降低风险：
+
+### 频率控制
+
+- **每日评论回复上限**：不超过 20-30 条
+- **单次操作间隔**：至少 5 分钟以上，两次操作间加入随机等待（30秒~15分钟）
+- **避免深夜操作**：凌晨 0-6 点不触发自动化任务
+
+### 行为模拟
+
+- **随机化触发时间**：定时任务不要整点触发，加入 ±30 分钟随机抖动
+- **间隔随机化**：`await asyncio.sleep(random.uniform(30, 900))` 代替固定间隔
+- **批量操作有上限**：每次最多处理 3 篇笔记，不一次处理过多
+
+### 账号保护
+
+- **账号刚被处罚后**：立即停止所有自动化操作，等待 3-5 天后逐步恢复
+- **主号与小号分离**：主号稳扎稳打，自动化测试用小号
+- **内容原创**：避免批量发布高度相似内容
+
+---
 
 ## 效果截图
 
